@@ -1,54 +1,60 @@
 name: EKS Deletion via Pipeline
 
-on:  
-  # Allow manual trigger
+on:
   workflow_dispatch:
-  
-  # Run on push to main branch (optional)
-  # push:
-  #   branches:
-  #     - main
+
 permissions:
   id-token: write
   contents: write
 
 jobs:
-  backup:
+  deletion:
     runs-on: ubuntu-latest
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           role-to-assume: arn:aws:iam::000087384605:role/githubworkflowrole
-          role-session-name: "samplerolesession"
+          role-session-name: samplerolesession
           aws-region: us-east-1
 
-      
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig \
             --name eksdemo1 \
             --region us-east-1
-      
+
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
-          version: 'latest'
-      
-      - name: Install Helm (optional)
-        uses: azure/setup-helm@v3
-        with:
-          version: 'latest'
-      
-      - name: Run deletion script
-        run: | 
-          kubectl delete application monitoring-stack -n argocd
-          kubectl delete application default-apps -n argocd 
-        
-        
+          version: latest
+
+      # -------------------------------
+      # STEP 1: Delete Argo CD Applications
+      # -------------------------------
+      - name: Delete Argo CD Applications
+        run: |
+          echo "Deleting Argo CD applications..."
+          kubectl get applications -n argocd
+          kubectl delete application monitoring-deployment -n argocd --ignore-not-found=true
+          kubectl delete application eks-deployment -n argocd --ignore-not-found=true
+
+      # -------------------------------
+      # STEP 2: Wait for resources cleanup
+      # -------------------------------
+      - name: Wait for workload cleanup
+        run: |
+          echo "Waiting for workloads to be deleted..."
+          sleep 60
+
+      # -------------------------------
+      # STEP 3: Delete Argo CD pods
+      # -------------------------------
+      - name: Delete Argo CD Pods
+        run: |
+          echo "Deleting Argo CD pods..."
+          kubectl delete pod -n argocd --all --ignore-not-found=true
