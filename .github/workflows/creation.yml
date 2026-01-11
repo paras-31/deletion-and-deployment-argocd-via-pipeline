@@ -55,7 +55,12 @@ jobs:
       - name: Wait for ArgoCD server to be ready
         run: |
             kubectl wait --for=condition=available --timeout=600s deployment/argocd-server -n argocd
-
+            
+      - name: deploye argocd ingress
+        run: |
+            kubectl apply -f argocd-ingress.yml
+            sleep 30
+            
       - name: Get initial admin password
         run: |
             kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
