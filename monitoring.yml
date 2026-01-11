@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-Deployment
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/paras-31/Cluster-monitoring-EKS.git
+    targetRevision: HEAD
+    path: advanced-grafana-dashboard
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

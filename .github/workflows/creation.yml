@@ -1,4 +1,4 @@
-name: EKS Deletion via Pipeline
+name: EKS setup via Pipeline
 
 on:  
   # Allow manual trigger
@@ -46,9 +46,19 @@ jobs:
         with:
           version: 'latest'
       
-      - name: Run deletion script
+      - name: Run setup script
         run: | 
-          kubectl delete application monitoring-stack -n argocd
-          kubectl delete application default-apps -n argocd 
-        
-        
+            kubectl create namespace argocd
+            kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+      - name: Wait for ArgoCD server to be ready
+        run: |
+            kubectl wait --for=condition=available --timeout=600s deployment/argocd-server -n argocd
+            
+      - name: Get initial admin password
+        run: |
+            kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+      
+      - name: deploy application to argocd
+        run: |
+            kubectl apply -f default.yml -n argocd
+            kubectl apply -f monitoring.yml -n argocd
