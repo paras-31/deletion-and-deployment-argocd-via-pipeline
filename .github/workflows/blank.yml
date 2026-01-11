@@ -1,4 +1,4 @@
-name: EKS Deletion via Pipeline
+name: EKS Full Cleanup via Pipeline
 
 on:
   workflow_dispatch:
@@ -33,28 +33,65 @@ jobs:
         with:
           version: latest
 
-      # -------------------------------
-      # STEP 1: Delete Argo CD Applications
-      # -------------------------------
+      # ------------------------------------------------
+      # STEP 1: Delete Argo CD Applications (GitOps layer)
+      # ------------------------------------------------
       - name: Delete Argo CD Applications
         run: |
           echo "Deleting Argo CD applications..."
-          kubectl get applications -n argocd
+          kubectl get applications -n argocd || true
           kubectl delete application monitoring-deployment -n argocd --ignore-not-found=true
           kubectl delete application eks-deployment -n argocd --ignore-not-found=true
 
-      # -------------------------------
-      # STEP 2: Wait for resources cleanup
-      # -------------------------------
+      # ------------------------------------------------
+      # STEP 2: Wait for workloads to be removed
+      # ------------------------------------------------
       - name: Wait for workload cleanup
         run: |
-          echo "Waiting for workloads to be deleted..."
+          echo "Waiting for Argo CD to delete workloads..."
           sleep 60
 
-      # -------------------------------
-      # STEP 3: Delete Argo CD pods
-      # -------------------------------
-      - name: Delete Argo CD Pods
+      # ------------------------------------------------
+      # STEP 3: Force-delete remaining workloads (safety)
+      # ------------------------------------------------
+      - name: Delete all workloads in monitoring & default
         run: |
-          echo "Deleting Argo CD pods..."
-          kubectl delete pod -n argocd --all --ignore-not-found=true
+          echo "Deleting all workloads in monitoring namespace..."
+          kubectl delete all -n monitoring --all --ignore-not-found=true
+          kubectl delete pod -n monitoring --all --ignore-not-found=true
+
+          echo "Deleting all workloads in default namespace..."
+          kubectl delete all -n default --all --ignore-not-found=true
+          kubectl delete pod -n default --all --ignore-not-found=true
+
+      # ------------------------------------------------
+      # STEP 4: Delete Argo CD COMPLETELY
+      # ------------------------------------------------
+      - name: Delete Argo CD controllers and pods
+        run: |
+          echo "Deleting Argo CD namespace..."
+          kubectl delete namespace argocd --ignore-not-found=true
+
+          echo "Deleting Argo CD from default namespace (if installed there)..."
+          kubectl delete deployment argocd-application-controller \
+            argocd-applicationset-controller \
+            argocd-dex-server \
+            argocd-notifications-controller \
+            argocd-redis \
+            argocd-repo-server \
+            argocd-server \
+            -n default --ignore-not-found=true
+
+      # ------------------------------------------------
+      # STEP 5: Verification (non-failing)
+      # ------------------------------------------------
+      - name: Verify cleanup
+        run: |
+          echo "Remaining Argo CD pods (should be empty):"
+          kubectl get pods -A | grep argocd || echo "No Argo CD pods found ✅"
+
+          echo "Remaining pods in monitoring:"
+          kubectl get pods -n monitoring || echo "monitoring namespace empty ✅"
+
+          echo "Remaining pods in default:"
+          kubectl get pods -n default || echo "default namespace empty (except system pods) ✅"
